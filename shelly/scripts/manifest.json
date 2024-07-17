@@ -1,5 +1,12 @@
-[{
-"fname": "hello2.js",
-"title": "Hello world 2",
-"description": "Here we go"
-}]
+[
+  {
+    "fname": "hello2.js",
+    "title": "Hello world 2",
+    "description": "Here we go"
+  },
+  {
+    "fname": "send_temp.js",
+    "title": "Store boiler temperatures",
+    "description": "Send boiler temperatures to the server"
+  }
+]
