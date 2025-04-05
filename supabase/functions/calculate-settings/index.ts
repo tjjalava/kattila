@@ -36,20 +36,39 @@ const elementPropTemplate: ElementProps = {
   maxTemp: 70,
 };
 
-const options = {
+const defaultOptions = {
   tempLimitUp: 55,
   tempLimitDown: 35,
 };
 
+const parseParam = (param?: string | null) => {
+  if (!param) {
+    return undefined;
+  }
+  const parsed = parseFloat(param);
+  if (isNaN(parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "GET") {
     try {
+      const url = new URL(req.url);
+      const params = url.searchParams;
+
+      const options = {
+        tempLimitUp: parseParam(params.get("up")) ?? defaultOptions.tempLimitUp,
+        tempLimitDown: parseParam(params.get("down")) ?? defaultOptions.tempLimitDown,
+      }
+
       const currentHour = startOfHour(new Date());
 
       const storedPlan = await getHeatingPlan();
       const currentPlan = storedPlan[currentHour.toISOString()];
 
-      if (currentPlan?.locked) {
+      if (currentPlan?.locked && params.get("force") !== "true") {
         return new Response(
           JSON.stringify({ currentPower: currentPlan.power }),
           {
@@ -66,8 +85,6 @@ Deno.serve(async (req) => {
       const dropRates = await getDropRates();
 
       const increaseRates = await getIncreaseRates();
-
-      console.log(dropRates, increaseRates);
 
       const elementProps: ElementProps = {
         ...elementPropTemplate,
@@ -98,7 +115,6 @@ Deno.serve(async (req) => {
             ...acc,
             new HourlySetting(
               startDate,
-              0,
               price,
               elementProps,
               acc[acc.length - 1] ?? startTemp,
@@ -130,6 +146,7 @@ Deno.serve(async (req) => {
         },
       );
     } catch (error) {
+      console.error(error);
       return new Response(
         error instanceof Error ? error.message : String(error),
         { status: 500 },
