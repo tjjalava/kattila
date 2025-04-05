@@ -13,7 +13,9 @@ import {
   getDropRates,
   getHeatingPlan,
   getIncreaseRates,
-  getTemperature, RESISTOR_DOWN, RESISTOR_UP,
+  getTemperature,
+  RESISTOR_DOWN,
+  RESISTOR_UP,
   savePlan,
   UP,
 } from "./db.ts";
@@ -50,18 +52,20 @@ const parseParam = (param?: string | null) => {
     return undefined;
   }
   return parsed;
-}
+};
 
 Deno.serve(async (req) => {
   if (req.method === "GET") {
     try {
       const url = new URL(req.url);
       const params = url.searchParams;
+      const verbose = params.get("verbose") === "true";
 
       const options = {
         tempLimitUp: parseParam(params.get("up")) ?? defaultOptions.tempLimitUp,
-        tempLimitDown: parseParam(params.get("down")) ?? defaultOptions.tempLimitDown,
-      }
+        tempLimitDown: parseParam(params.get("down")) ??
+          defaultOptions.tempLimitDown,
+      };
 
       const currentHour = startOfHour(new Date());
 
@@ -130,8 +134,8 @@ Deno.serve(async (req) => {
 
       await savePlan(settings);
 
-      return new Response(
-        JSON.stringify({
+      const response = verbose
+        ? {
           results: settings.map((s) => s.toJson()),
           currentPower: settings[0].power,
           estimate: {
@@ -140,7 +144,11 @@ Deno.serve(async (req) => {
           },
           startTemp,
           elementProps,
-        }),
+        }
+        : { currentPower: settings[0].power };
+
+      return new Response(
+        JSON.stringify(response),
         {
           status: 200,
         },
