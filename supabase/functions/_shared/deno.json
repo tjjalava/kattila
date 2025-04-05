@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "supabase": "jsr:@supabase/supabase-js@2",
+    "date-fns": "npm:date-fns@4.1.0",
+    "@date-fns/tz": "npm:@date-fns/tz",
+    "zod": "npm:zod@3.21.4"
+  }
+}

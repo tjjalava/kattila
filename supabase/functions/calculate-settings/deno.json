@@ -1,0 +1,12 @@
+{
+  "imports": {
+    "supabase": "jsr:@supabase/supabase-js@2",
+    "supabaseClient": "../_shared/supabaseClient.ts",
+    "tarifs": "../_shared/electricity-tarifs.ts",
+    "date-fns": "npm:date-fns@4.1.0",
+    "@date-fns/tz": "npm:@date-fns/tz",
+    "remeda": "https://esm.sh/remeda",
+    "edge-runtime": "jsr:@supabase/functions-js/edge-runtime.d.ts",
+    "zod": "npm:zod@3.21.4"
+  }
+}
