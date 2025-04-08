@@ -11,36 +11,49 @@ let token = "SECRET_TOKEN"
 let reportUrl = "https://gaqwlaafsprpmoezomkj.supabase.co/functions/v1/resistor-state";
 let settingsUrl = "https://gaqwlaafsprpmoezomkj.supabase.co/functions/v1/calculate-settings";
 
+let statusUp = -1;
+let statusDown = -1;
+let currentHandlerTs = ""
 function statusHandler(statusEvent) {
   let name = statusEvent.name;
   let id = statusEvent.id;
   if (name === "switch" && id < 2) {
-    let delta = statusEvent.delta;
-    if (delta.output !== undefined) {
-      let currentSwitch = "switch:" + id;
-      let otherSwitch = "switch:" + ((id + 1) % 2);
-      printDebug("Current: " + currentSwitch + ", other: " + otherSwitch)
-      let body = {};
-      body[currentSwitch] = delta.output;
-      body[otherSwitch] = Shelly.getComponentStatus(otherSwitch).output;
-      printDebug("Switch status: " + JSON.stringify(body));
-      Shelly.call(
-        "HTTP.Request",
-        {
-          url: reportUrl,
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + token
-          },
-          body: JSON.stringify({down: body["switch:1"], up: body["switch:0"]})
-        },
-        function (result, error, errorMessage) {
-          if (error) {
-            printDebug("Error: ", errorMessage)
-          }
+    let timestamp = new Date().toISOString();
+    currentHandlerTs = timestamp;
+    Timer.set(2000, false, function () {
+      if (currentHandlerTs !== timestamp) {
+        let body = {
+          timestamp: timestamp,
+          up: Shelly.getComponentStatus("switch:" + RelayUp).output,
+          down: Shelly.getComponentStatus("switch:" + RelayDown).output,
+        };
+        if (body.up !== statusUp || body.down !== statusDown) {
+          statusUp = body.up;
+          statusDown = body.down;
+          printDebug("Switch status: " + JSON.stringify(body));
+          Shelly.call(
+            "HTTP.Request",
+            {
+              url: reportUrl,
+              method: "POST",
+              headers: {
+                "Authorization": "Bearer " + token
+              },
+              body: JSON.stringify(body)
+            },
+            function (result, error, errorMessage) {
+              if (error) {
+                printDebug("Error: ", errorMessage)
+              }
+            }
+          );
+        } else {
+          printDebug("Status handler: event ignored, no changes.");
         }
-      );
-    }
+      } else {
+        printDebug("Status handler: event ignored, timestamp mismatch.");
+      }
+    })
   }
 }
 
@@ -123,8 +136,8 @@ Timer.set(30000, true, function () {
           Shelly.call("Switch.Set", {id: RelayUp, on: true}, null, null);
           printDebug("Kytketään ylärele päälle, alarele pois päältä.");
         } else {
-          Shelly.call("Switch.Set", {id: RelayDown, on: true}, null, null);
           Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
+          Shelly.call("Switch.Set", {id: RelayDown, on: true}, null, null);
           printDebug("Kytketään alarele päälle, ylärele pois päältä.");
         }
         prevSetting = on;

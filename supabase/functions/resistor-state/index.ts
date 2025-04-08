@@ -3,6 +3,7 @@ import { client } from "supabaseClient"
 import {z} from "zod";
 
 const bodySchema = z.object({
+  timestamp: z.string().datetime().default(() => new Date().toISOString()),
   down: z.boolean(),
   up: z.boolean(),
 })
@@ -10,7 +11,7 @@ const bodySchema = z.object({
 Deno.serve(async (req) => {
   if (req.method === "POST") {
     try {
-      const {down, up} = bodySchema.parse(await req.json());
+      const {timestamp, down, up} = bodySchema.parse(await req.json());
 
       const temperatureDown = await client.from("temperature").select(
         "temperature",
@@ -22,6 +23,7 @@ Deno.serve(async (req) => {
         .order("timestamp", {ascending: false}).limit(1);
 
       const {error} = await client.from("resistor_state").insert({
+        timestamp,
         down,
         up,
         down_temp: temperatureDown.data?.at(0)?.temperature ?? 0,

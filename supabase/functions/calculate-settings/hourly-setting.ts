@@ -93,9 +93,11 @@ export class HourlySetting implements HourState {
   }
 
   private setCache() {
+    const downTemp = this.calculateDownTemp();
+    const upTemp = Math.max(downTemp, this.calculateUpTemp());
     this.cache = {
-      upTemp: this.calculateUpTemp(),
-      downTemp: this.calculateDownTemp(),
+      upTemp,
+      downTemp,
     };
   }
 
