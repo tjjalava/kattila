@@ -12,7 +12,6 @@ import {
   DOWN,
   getDropRates,
   getHeatingPlan,
-  getIncreaseRates,
   getTemperature,
   RESISTOR_DOWN,
   RESISTOR_UP,
@@ -88,18 +87,18 @@ Deno.serve(async (req) => {
 
       const dropRates = await getDropRates();
 
-      const increaseRates = await getIncreaseRates();
+      const increaseRates = undefined //await getIncreaseRates();
 
       const elementProps: ElementProps = {
         ...elementPropTemplate,
         increasePerHour: {
           6: {
-            up: increaseRates?.[RESISTOR_UP][UP] ?? 1.1,
-            down: increaseRates?.[RESISTOR_UP][DOWN] ?? 0.9,
+            up: increaseRates?.[RESISTOR_UP][UP] ?? 3.8,
+            down: increaseRates?.[RESISTOR_UP][DOWN] ?? 2.7,
           },
           12: {
-            up: increaseRates?.[RESISTOR_DOWN][UP] ?? 3.4,
-            down: increaseRates?.[RESISTOR_DOWN][DOWN] ?? 5.5,
+            up: increaseRates?.[RESISTOR_DOWN][UP] ?? 3,
+            down: increaseRates?.[RESISTOR_DOWN][DOWN] ?? 5.6,
           },
         },
         decreasePerHour: {
@@ -132,7 +131,7 @@ Deno.serve(async (req) => {
         return [p + curr.actualPower, c + curr.cost];
       }, [0, 0]);
 
-      await savePlan(settings);
+      await savePlan(settings, { ...options, elementProps, ...startTemp }, currentHour);
 
       const response = verbose
         ? {

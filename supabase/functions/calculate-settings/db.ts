@@ -1,7 +1,17 @@
 import * as R from "remeda";
-import {type Duration, formatDuration, isSameHour, startOfHour} from "date-fns";
-import {HourlySetting} from "./hourly-setting.ts";
-import { client } from "supabaseClient"
+import {
+  type Duration,
+  formatDuration,
+  isSameHour,
+  startOfHour,
+} from "date-fns";
+import {
+  CalculateOptions,
+  HourlySetting,
+  HourState,
+} from "./hourly-setting.ts";
+import { client } from "supabaseClient";
+import {Json} from "../_shared/database.types.ts";
 
 export const DOWN = "101";
 export const UP = "100";
@@ -11,17 +21,22 @@ export const RESISTOR_DOWN = "12";
 
 export type Peripheral = typeof DOWN | typeof UP;
 
-export const getHeatingPlan = async (currentHour = startOfHour(new Date())) => {
-  const { data, error: fetchError } = await client
-    .from("heating_plan")
-    .select()
-    .gte("timestamp", currentHour.toISOString());
-
-  if (fetchError) {
-    const error = new Error(fetchError.message);
-    error.cause = fetchError.cause;
-    throw error;
+const db = <Ret>(fn: { data: Ret; error: Error | null }) => {
+  if (fn.error) {
+    const dbError = new Error(fn.error.message);
+    dbError.cause = fn.error.cause;
+    throw dbError;
   }
+  return fn.data;
+};
+
+export const getHeatingPlan = async (currentHour = startOfHour(new Date())) => {
+  const data = db(
+    await client
+      .from("heating_plan")
+      .select()
+      .gte("timestamp", currentHour.toISOString()),
+  );
 
   return R.mapToObj(
     data ?? [],
@@ -30,18 +45,22 @@ export const getHeatingPlan = async (currentHour = startOfHour(new Date())) => {
 };
 
 export const getTemperature = async (peripheral: Peripheral) => {
-  return (await client.from("temperature").select(
-    "temperature",
-  ).eq("peripheral", peripheral).order("timestamp", { ascending: false }).limit(
-    1,
-  )).data?.at(0)?.temperature;
+  return db(
+    await client.from("temperature").select(
+      "temperature",
+    ).eq("peripheral", peripheral).order("timestamp", { ascending: false })
+      .limit(
+        1,
+      ),
+  )?.at(0)?.temperature;
 };
 
-export const getDropRates = async (interval: Duration = { hours: 12 }) =>
-  (await client.rpc("get_temperature_drop_rates", {
-    interval_hours: formatDuration(interval, { format: ["hours"] }),
-  }))
-    .data
+export const getDropRates = async (interval: Duration = { hours: 6 }) =>
+  db(
+    await client.rpc("get_temperature_drop_rates", {
+      interval_hours: formatDuration(interval, { format: ["hours"] }),
+    }),
+  )
     ?.reduce<Record<string, number>>(
       (acc, { peripheral, drop_rate_per_hour }) => {
         return { ...acc, [peripheral]: drop_rate_per_hour };
@@ -52,10 +71,11 @@ export const getDropRates = async (interval: Duration = { hours: 12 }) =>
 export const getIncreaseRates = async (
   intervalHours: Duration = { hours: 24 },
 ) =>
-  (await client.rpc("get_temperature_increase_rates", {
-    interval_hours: formatDuration(intervalHours, { format: ["hours"] }),
-  }))
-    .data
+  db(
+    await client.rpc("get_temperature_increase_rates", {
+      interval_hours: formatDuration(intervalHours, { format: ["hours"] }),
+    }),
+  )
     ?.reduce<Record<string, Record<string, number>>>(
       (acc, { peripheral, state, diff_per_hour }) => {
         return {
@@ -66,26 +86,32 @@ export const getIncreaseRates = async (
       { 6: {}, 12: {} },
     );
 
-export const savePlan = async (settings: HourlySetting[], currentHour = startOfHour(new Date())) => {
-  const {error: err} = await client.from("heating_plan").upsert(
-    settings.map((s) => ({
-      timestamp: s.timestamp.toISOString(),
-      power: s.power,
-      price: s.price,
-      transmission_price: s.transmissionPrice,
-      total_price: s.totalPrice,
-      actual_power: s.actualPower,
-      cost: s.cost,
-      t_down: s.temperatureDown,
-      t_up: s.temperatureUp,
-      locked: isSameHour(s.timestamp, currentHour),
-      updated_at: new Date().toISOString(),
-    })),
+export const savePlan = async (
+  settings: HourlySetting[],
+  options: CalculateOptions & HourState,
+  currentHour = startOfHour(new Date()),
+) => {
+  db(
+    await client.from("heating_plan").upsert(
+      settings.map((s) => ({
+        timestamp: s.timestamp.toISOString(),
+        power: s.power,
+        price: s.price,
+        transmission_price: s.transmissionPrice,
+        total_price: s.totalPrice,
+        actual_power: s.actualPower,
+        cost: s.cost,
+        t_down: s.temperatureDown,
+        t_up: s.temperatureUp,
+        locked: isSameHour(s.timestamp, currentHour),
+        updated_at: new Date().toISOString(),
+      })),
+    ),
   );
 
-  if (err) {
-    const error = new Error(err.message);
-    error.cause = err.cause;
-    throw error;
-  }
-}
+  db(
+    await client.from("heating_plan").update({
+      options: options as unknown as Json,
+    }).eq("timestamp", currentHour.toISOString()),
+  );
+};
