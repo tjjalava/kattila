@@ -77,7 +77,7 @@ Timer.set(30000, true, function () {
 
 
   printDebug("Lämpötilarajat: ylä: " + upMinTemp + ", ala: " + downMinTemp);
-  let url = settingsUrl + "?up=" + upMinTemp + "?down=" + downMinTemp;
+  let url = settingsUrl + "?up=" + upMinTemp + "&down=" + downMinTemp;
   Shelly.call(
     "HTTP.Request",
     {
