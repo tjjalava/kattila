@@ -55,11 +55,9 @@ export const getTemperature = async (peripheral: Peripheral) => {
   )?.at(0)?.temperature;
 };
 
-export const getDropRates = async (interval: Duration = { hours: 6 }) =>
+export const getDropRates = async () =>
   db(
-    await client.rpc("get_temperature_drop_rates", {
-      interval_hours: formatDuration(interval, { format: ["hours"] }),
-    }),
+    await client.rpc("get_temperature_drop_rates"),
   )
     ?.reduce<Record<string, number>>(
       (acc, { peripheral, drop_rate_per_hour }) => {

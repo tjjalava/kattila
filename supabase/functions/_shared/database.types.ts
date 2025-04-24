@@ -148,7 +148,7 @@ export type Database = {
     }
     Functions: {
       get_temperature_drop_rates: {
-        Args: { interval_hours?: unknown }
+        Args: Record<PropertyKey, never>
         Returns: {
           peripheral: string
           drop_rate_per_hour: number
