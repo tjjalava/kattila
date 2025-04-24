@@ -1,2 +1,0 @@
-ALTER TABLE heating_plan
-    ADD COLUMN IF NOT EXISTS options JSONB NOT NULL DEFAULT '{}'::JSONB;
