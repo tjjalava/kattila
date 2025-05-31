@@ -1,7 +1,18 @@
 import { getTransmissionPrice } from "tarifs";
 import { isAfter } from "date-fns";
+import { TZDate } from "@date-fns/tz";
 
 type Power = 0 | 6 | 12;
+
+const lowTempStartHour = 0;
+const lowTempEndHour = 6;
+const flexPriceLimit = 25;
+
+const isLowTempHour = (date: Date) => {
+  const tzDate = new TZDate(date, "Europe/Helsinki");
+  return tzDate.getHours() >= lowTempStartHour &&
+    tzDate.getHours() < lowTempEndHour;
+};
 
 export interface ElementProps {
   decreasePerHour: {
@@ -30,6 +41,7 @@ export class HourlySetting implements HourState {
   public readonly _tag = "HourlySetting";
 
   public readonly transmissionPrice: number;
+  public readonly isLowTempHour: boolean;
 
   private increaseFactors: {
     6: {
@@ -44,6 +56,8 @@ export class HourlySetting implements HourState {
 
   private _power: Power = 0;
 
+  public flexPriceUsed = false;
+
   private cache: {
     upTemp?: number;
     downTemp?: number;
@@ -57,23 +71,20 @@ export class HourlySetting implements HourState {
   ) {
     this.increaseFactors = {
       6: {
-        up:
-          (elementProps.increasePerHour[6].up +
-            elementProps.decreasePerHour.up) / 6,
-        down:
-          (elementProps.increasePerHour[6].down +
-            elementProps.decreasePerHour.down) / 6,
+        up: (elementProps.increasePerHour[6].up +
+          elementProps.decreasePerHour.up) / 6,
+        down: (elementProps.increasePerHour[6].down +
+          elementProps.decreasePerHour.down) / 6,
       },
       12: {
-        up:
-          (elementProps.increasePerHour[12].up +
-            elementProps.decreasePerHour.up) / 12,
-        down:
-          (elementProps.increasePerHour[12].down +
-            elementProps.decreasePerHour.down) / 12,
+        up: (elementProps.increasePerHour[12].up +
+          elementProps.decreasePerHour.up) / 12,
+        down: (elementProps.increasePerHour[12].down +
+          elementProps.decreasePerHour.down) / 12,
       },
     };
     this.transmissionPrice = getTransmissionPrice(this.timestamp);
+    this.isLowTempHour = isLowTempHour(this.timestamp);
   }
 
   private calculateUpTemp() {
@@ -209,11 +220,10 @@ const getCheapestAvailableHour = (
   ) {
     return selected;
   }
-  const nextSelected =
-    (currentSetting.power !== 12 &&
-        currentSetting.totalPrice < selected.totalPrice)
-      ? currentSetting
-      : selected;
+  const nextSelected = (currentSetting.power !== 12 &&
+      currentSetting.totalPrice < selected.totalPrice)
+    ? currentSetting
+    : selected;
 
   return (isHourlySetting(currentSetting.prevState))
     ? getCheapestAvailableHour(currentSetting.prevState, maxTemp, nextSelected)
@@ -231,20 +241,33 @@ export const calculateSettings = (
   options: CalculateOptions,
 ) => {
   for (const setting of hourlySettings) {
+    const limitUp = setting.isLowTempHour ? options.tempLimitUp - 5 : options.tempLimitUp;
+
     while (
-      setting.temperatureUp < options.tempLimitUp ||
+      setting.temperatureUp < limitUp ||
       setting.temperatureDown < options.tempLimitDown
     ) {
       const cheapest = getCheapestAvailableHour(
         setting,
         options.elementProps.maxTemp,
       );
+
+      if (
+        cheapest.totalPrice > flexPriceLimit && !setting.isLowTempHour &&
+        setting.temperatureUp >= (limitUp - 5)
+      ) {
+        setting.flexPriceUsed = true;
+        break;
+      }
+
       if (cheapest.power !== 12) {
         cheapest.power = cheapest.power === 0 ? 6 : 12;
         hourlySettings.filter(({ timestamp }) =>
           isAfter(timestamp, cheapest.timestamp) &&
           !isAfter(timestamp, setting.timestamp)
-        ).forEach((hs) => { hs.resetCache() });
+        ).forEach((hs) => {
+          hs.resetCache();
+        });
       }
       if (cheapest === setting && cheapest.power === 12) {
         break;

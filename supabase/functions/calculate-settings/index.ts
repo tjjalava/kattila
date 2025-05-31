@@ -73,9 +73,15 @@ Deno.serve(async (req) => {
 
       if (currentPlan?.locked && params.get("force") !== "true") {
         return new Response(
-          JSON.stringify({ currentPower: currentPlan.power }),
+          JSON.stringify({
+            currentPower: currentPlan.power,
+            ...(params.get("verbose") === "true" && { plan: storedPlan }),
+          }),
           {
             status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
           },
         );
       }
@@ -87,7 +93,7 @@ Deno.serve(async (req) => {
 
       const dropRates = await getDropRates();
 
-      const increaseRates = undefined //await getIncreaseRates();
+      const increaseRates = undefined; //await getIncreaseRates();
 
       const elementProps: ElementProps = {
         ...elementPropTemplate,
@@ -131,7 +137,11 @@ Deno.serve(async (req) => {
         return [p + curr.actualPower, c + curr.cost];
       }, [0, 0]);
 
-      await savePlan(settings, { ...options, elementProps, ...startTemp }, currentHour);
+      await savePlan(
+        settings,
+        { ...options, elementProps, ...startTemp },
+        currentHour,
+      );
 
       const response = verbose
         ? {
@@ -150,6 +160,9 @@ Deno.serve(async (req) => {
         JSON.stringify(response),
         {
           status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
       );
     } catch (error) {

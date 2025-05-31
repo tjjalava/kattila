@@ -103,13 +103,26 @@ export const savePlan = async (
         t_up: s.temperatureUp,
         locked: isSameHour(s.timestamp, currentHour),
         updated_at: new Date().toISOString(),
+        options: {
+          isLowTempHour: s.isLowTempHour,
+          flexPriceUsed: s.flexPriceUsed,
+          tempLimitUp: s.isLowTempHour || s.flexPriceUsed ? options.tempLimitUp - 5 : options.tempLimitUp,
+          tempLimitDown: options.tempLimitDown,
+        }
       })),
     ),
   );
 
+  const currentSetting = settings[0];
+
   db(
     await client.from("heating_plan").update({
-      options: options as unknown as Json,
+      options: {
+        ...options,
+        isLowTempHour: currentSetting.isLowTempHour,
+        flexPriceUsed: currentSetting.flexPriceUsed,
+        tempLimitUp: currentSetting.isLowTempHour || currentSetting.flexPriceUsed ? options.tempLimitUp - 5 : options.tempLimitUp,
+      } as unknown as Json,
     }).eq("timestamp", currentHour.toISOString()),
   );
 };
