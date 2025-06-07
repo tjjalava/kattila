@@ -61,7 +61,7 @@ export const getDropRates = async () =>
   )
     ?.reduce<Record<string, number>>(
       (acc, { peripheral, drop_rate_per_hour }) => {
-        return { ...acc, [peripheral]: drop_rate_per_hour };
+        return { ...acc, [peripheral]: Math.max(0, drop_rate_per_hour) };
       },
       {},
     );

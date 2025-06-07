@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
         tempLimitUp: parseParam(params.get("up")) ?? defaultOptions.tempLimitUp,
         tempLimitDown: parseParam(params.get("down")) ??
           defaultOptions.tempLimitDown,
+        maxPower: 6 as const
       };
 
       const currentHour = startOfHour(new Date());
@@ -93,19 +94,21 @@ Deno.serve(async (req) => {
 
       const dropRates = await getDropRates();
 
-      const increaseRates = undefined; //await getIncreaseRates();
+      const increaseRates = {
+        6: {
+          up: 3.8,
+          down: 0,
+        },
+        12: {
+          up: 3,
+          down: 5.6,
+        },
+      }
 
       const elementProps: ElementProps = {
         ...elementPropTemplate,
         increasePerHour: {
-          6: {
-            up: increaseRates?.[RESISTOR_UP][UP] ?? 3.8,
-            down: increaseRates?.[RESISTOR_UP][DOWN] ?? 2.7,
-          },
-          12: {
-            up: increaseRates?.[RESISTOR_DOWN][UP] ?? 3,
-            down: increaseRates?.[RESISTOR_DOWN][DOWN] ?? 5.6,
-          },
+          ...increaseRates,
         },
         decreasePerHour: {
           up: dropRates?.[UP] ?? 1.2,

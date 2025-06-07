@@ -1,5 +1,5 @@
 import { getTransmissionPrice } from "tarifs";
-import { isAfter } from "date-fns";
+import { isAfter, isBefore } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 
 type Power = 0 | 6 | 12;
@@ -211,6 +211,7 @@ const isHourlySetting = (h: HourState): h is HourlySetting =>
 const getCheapestAvailableHour = (
   currentSetting: HourlySetting,
   maxTemp: number,
+  maxPower: Power,
   selectedSetting?: HourlySetting,
 ): HourlySetting => {
   const selected = selectedSetting ?? currentSetting;
@@ -220,13 +221,18 @@ const getCheapestAvailableHour = (
   ) {
     return selected;
   }
-  const nextSelected = (currentSetting.power !== 12 &&
+  const nextSelected = (currentSetting.power < maxPower &&
       currentSetting.totalPrice < selected.totalPrice)
     ? currentSetting
     : selected;
 
   return (isHourlySetting(currentSetting.prevState))
-    ? getCheapestAvailableHour(currentSetting.prevState, maxTemp, nextSelected)
+    ? getCheapestAvailableHour(
+      currentSetting.prevState,
+      maxTemp,
+      maxPower,
+      nextSelected,
+    )
     : nextSelected;
 };
 
@@ -234,22 +240,48 @@ export interface CalculateOptions {
   tempLimitUp: number;
   tempLimitDown: number;
   elementProps: ElementProps;
+  maxPower?: 6 | 12;
 }
+
+const comparePowerSettings = (
+  a: HourlySetting,
+  b: HourlySetting,
+  settings: HourlySetting[],
+) => {
+  if (
+    a.power !== 0 && a.power === b.power && a.actualPower < a.power &&
+    b.actualPower < b.power
+  ) {
+    const fullPower = a.actualPower + b.actualPower;
+    if (fullPower < b.power) {
+      const plannedCost = a.cost + b.cost;
+      const altCost = fullPower * b.totalPrice;
+      if (altCost <= plannedCost) {
+        a.power = a.power === 12 ? 6 : 0;
+        settings.filter(({ timestamp }) => !isBefore(timestamp, a.timestamp))
+          .forEach((hs) => {
+            hs.resetCache();
+          });
+      }
+    }
+  }
+};
 
 export const calculateSettings = (
   hourlySettings: HourlySetting[],
-  options: CalculateOptions,
+  { tempLimitUp, tempLimitDown, elementProps, maxPower = 12 }: CalculateOptions,
 ) => {
   for (const setting of hourlySettings) {
-    const limitUp = setting.isLowTempHour ? options.tempLimitUp - 5 : options.tempLimitUp;
+    const limitUp = setting.isLowTempHour ? tempLimitUp - 5 : tempLimitUp;
 
     while (
       setting.temperatureUp < limitUp ||
-      setting.temperatureDown < options.tempLimitDown
+      setting.temperatureDown < tempLimitDown
     ) {
       const cheapest = getCheapestAvailableHour(
         setting,
-        options.elementProps.maxTemp,
+        elementProps.maxTemp,
+        maxPower,
       );
 
       if (
@@ -260,7 +292,7 @@ export const calculateSettings = (
         break;
       }
 
-      if (cheapest.power !== 12) {
+      if (cheapest.power < maxPower) {
         cheapest.power = cheapest.power === 0 ? 6 : 12;
         hourlySettings.filter(({ timestamp }) =>
           isAfter(timestamp, cheapest.timestamp) &&
@@ -269,10 +301,14 @@ export const calculateSettings = (
           hs.resetCache();
         });
       }
-      if (cheapest === setting && cheapest.power === 12) {
+      if (cheapest === setting && cheapest.power === maxPower) {
         break;
       }
     }
+  }
+
+  for (let i = 0; i < hourlySettings.length - 1; i++) {
+    comparePowerSettings(hourlySettings[i], hourlySettings[i + 1], hourlySettings);
   }
 
   return hourlySettings;
