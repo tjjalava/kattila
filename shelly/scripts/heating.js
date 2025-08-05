@@ -48,10 +48,8 @@ function statusHandler(statusEvent) {
             }
           );
         } else {
-          printDebug("Status handler: event ignored, no changes.");
+          printDebug("Status handler: no changes.");
         }
-      } else {
-        printDebug("Status handler: event ignored, timestamp mismatch.");
       }
     })
   }
@@ -60,7 +58,6 @@ function statusHandler(statusEvent) {
 Shelly.addStatusHandler(statusHandler);
 
 let hour = -1;
-let prevSetting = 0;
 
 printDebug("Ohjaus käynnistyy 30 sekunnissa.");
 
@@ -124,23 +121,19 @@ Timer.set(30000, true, function () {
         }
       }
 
-      if (prevSetting === on) {
-        printDebug("Ei muutoksia releiden tiloihin.");
+      printDebug("Releiden asetusarvo: " + on);
+      if (on === 0) {
+        Shelly.call("Switch.Set", {id: RelayDown, on: false}, null, null);
+        Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
+        printDebug("Kytketään releet pois päältä.");
+      } else if (on === 6) {
+        Shelly.call("Switch.Set", {id: RelayDown, on: false}, null, null);
+        Shelly.call("Switch.Set", {id: RelayUp, on: true}, null, null);
+        printDebug("Kytketään ylärele päälle, alarele pois päältä.");
       } else {
-        if (on === 0) {
-          Shelly.call("Switch.Set", {id: RelayDown, on: false}, null, null);
-          Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
-          printDebug("Kytketään releet pois päältä.");
-        } else if (on === 6) {
-          Shelly.call("Switch.Set", {id: RelayDown, on: false}, null, null);
-          Shelly.call("Switch.Set", {id: RelayUp, on: true}, null, null);
-          printDebug("Kytketään ylärele päälle, alarele pois päältä.");
-        } else {
-          Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
-          Shelly.call("Switch.Set", {id: RelayDown, on: true}, null, null);
-          printDebug("Kytketään alarele päälle, ylärele pois päältä.");
-        }
-        prevSetting = on;
+        Shelly.call("Switch.Set", {id: RelayDown, on: true}, null, null);
+        Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
+        printDebug("Kytketään alarele päälle, ylärele pois päältä.");
       }
     });
 });
