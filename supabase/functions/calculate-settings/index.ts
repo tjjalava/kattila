@@ -2,6 +2,7 @@ import "edge-runtime";
 import { startOfHour } from "date-fns";
 
 import {
+  CalculateOptions,
   calculateSettings,
   ElementProps,
   HourlySetting,
@@ -13,8 +14,6 @@ import {
   getDropRates,
   getHeatingPlan,
   getTemperature,
-  RESISTOR_DOWN,
-  RESISTOR_UP,
   savePlan,
   UP,
 } from "./db.ts";
@@ -59,13 +58,14 @@ Deno.serve(async (req) => {
       const url = new URL(req.url);
       const params = url.searchParams;
       const verbose = params.get("verbose") === "true";
+      const maxPower = parseParam(params.get("power"));
 
       const options = {
         tempLimitUp: parseParam(params.get("up")) ?? defaultOptions.tempLimitUp,
         tempLimitDown: parseParam(params.get("down")) ??
           defaultOptions.tempLimitDown,
-        maxPower: 6 as const
-      };
+        maxPower: maxPower === 6 || maxPower === 12 ? maxPower : undefined,
+      } satisfies Omit<CalculateOptions, "elementProps">;
 
       const currentHour = startOfHour(new Date());
 

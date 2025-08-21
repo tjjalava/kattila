@@ -1,5 +1,8 @@
+let token = "SECRET_TOKEN"
+
 let ComponentDownTemp = 204;   // Komponentti: Minimi alalämpötila
 let ComponentUpTemp = 205;   // Komponentti: Minimi ylälämpötila
+let ComponentMaxPower = 200; // Komponentti: Maksimi teho
 let RelayUp = 0;
 let RelayDown = 1;
 
@@ -7,7 +10,6 @@ function printDebug(message) {
   print("Heating: " + message);
 }
 
-let token = "SECRET_TOKEN"
 let reportUrl = "https://gaqwlaafsprpmoezomkj.supabase.co/functions/v1/resistor-state";
 let settingsUrl = "https://gaqwlaafsprpmoezomkj.supabase.co/functions/v1/calculate-settings";
 
@@ -71,10 +73,11 @@ Timer.set(30000, true, function () {
 
   let upMinTemp = Shelly.getComponentStatus("number", ComponentUpTemp)["value"];
   let downMinTemp = Shelly.getComponentStatus("number", ComponentDownTemp)["value"];
+  let maxPower = Shelly.getComponentStatus("enum", ComponentMaxPower)["value"];
 
 
-  printDebug("Lämpötilarajat: ylä: " + upMinTemp + ", ala: " + downMinTemp);
-  let url = settingsUrl + "?up=" + upMinTemp + "&down=" + downMinTemp;
+  printDebug("Lämpötilarajat: ylä: " + upMinTemp + ", ala: " + downMinTemp + ", teho: " + maxPower);
+  let url = settingsUrl + "?up=" + upMinTemp + "&down=" + downMinTemp + "&power=" + maxPower;
   Shelly.call(
     "HTTP.Request",
     {
@@ -88,6 +91,7 @@ Timer.set(30000, true, function () {
       let on = 0
       let error = err !== 0 || res == null || res.code !== 200;
       if (error) {
+        printDebug("Virhe HTTP-pyynnössä: " + url);
         printDebug(res.code);
         printDebug(err);
       }
