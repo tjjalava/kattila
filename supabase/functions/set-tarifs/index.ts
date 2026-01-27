@@ -1,63 +1,52 @@
 import "edge-runtime";
-import { fetchLatestPrices, getTransmissionPrice } from "tarifs";
-import { isEqual, startOfHour } from "date-fns";
-
-const SHELLY_ENDPOINT = "https://shelly-100-eu.shelly.cloud/v2/user/pp-ltu/";
+import {fetchLatestPricesQuarter, getTransmissionPrice} from "tarifs";
+import {isEqual, roundToNearestMinutes} from "date-fns";
 
 Deno.serve(async (req) => {
   if (req.method === "GET") {
     try {
-      const now = startOfHour(new Date());
-      const latestPrice = (await fetchLatestPrices()).find(({ startDate }) =>
-        isEqual(startDate, now)
-      );
-
+      const now = roundToNearestMinutes(new Date(), { nearestTo: 15, roundingMethod: "floor" });
+      const latestPrice = (await fetchLatestPricesQuarter()).find(({startDate}) => isEqual(startDate, now));
       if (!latestPrice) {
         return new Response("No price found for the current hour", {
-          status: 500,
+          status: 500
         });
       }
-
-      const transmissionPrice = getTransmissionPrice(now);
-
-      const shellyToken = Deno.env.get("SHELLY_TOKEN");
-      const shellyUrl = `${SHELLY_ENDPOINT}/${shellyToken}`;
-
-      console.log(
-        `Tariff at ${now.toISOString()}: ${latestPrice.price} + ${transmissionPrice} = ${
-          latestPrice.price + transmissionPrice
-        }`,
-      );
-
-      const body = {
-        price: (latestPrice.price + transmissionPrice) / 100,
+      const transmissionPrice = await getTransmissionPrice(now);
+      const shellyUrl = Deno.env.get("SHELLY_TARIFF_URL");
+      if (!shellyUrl) {
+        return new Response("SHELLY_TARIFF_URL is not set", {
+          status: 500
+        });
       }
-
+      console.log(`Tariff at ${now.toISOString()}: ${latestPrice.price} + ${transmissionPrice} = ${latestPrice.price + transmissionPrice}`);
+      const body = {
+        price: (latestPrice.price + transmissionPrice) / 100
+      };
       const shellyResponse = await fetch(shellyUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(body)
       });
-
       if (!shellyResponse.ok) {
-        return new Response("Shelly request failed", { status: 500 });
+        console.error("Shelly request failed, status: ", shellyResponse.status);
+      } else {
+        console.log("Tariff set ok");
       }
-
-      return new Response(JSON.stringify(body), { status: 201, headers: { "Content-Type": "application/json" } });
+      return shellyResponse;
     } catch (error) {
-      return new Response(
-        error instanceof Error ? error.message : String(error),
-        { status: 500 },
-      );
+      return new Response(error instanceof Error ? error.message : String(error), {
+        status: 500
+      });
     }
   } else {
-    return new Response(null, { status: 400 });
+    return new Response(null, {
+      status: 400
+    });
   }
-});
-
-/* To invoke locally:
+}); /* To invoke locally:
 
   1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
   2. Make an HTTP request:

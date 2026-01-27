@@ -68,6 +68,7 @@ export class HourlySetting implements HourState {
     public readonly price: number,
     private readonly elementProps: ElementProps,
     public readonly prevState: HourState,
+    transmissionPrice?: number,
   ) {
     this.increaseFactors = {
       6: {
@@ -83,8 +84,18 @@ export class HourlySetting implements HourState {
           elementProps.decreasePerHour.down) / 12,
       },
     };
-    this.transmissionPrice = getTransmissionPrice(this.timestamp);
+    this.transmissionPrice = transmissionPrice ?? 0;
     this.isLowTempHour = isLowTempHour(this.timestamp);
+  }
+
+  static async create(
+    timestamp: Date,
+    price: number,
+    elementProps: ElementProps,
+    prevState: HourState,
+  ): Promise<HourlySetting> {
+    const transmissionPrice = await getTransmissionPrice(timestamp);
+    return new HourlySetting(timestamp, price, elementProps, prevState, transmissionPrice);
   }
 
   private calculateUpTemp() {

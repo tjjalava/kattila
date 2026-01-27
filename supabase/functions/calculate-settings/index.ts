@@ -118,22 +118,20 @@ Deno.serve(async (req) => {
 
       const prices = await fetchLatestPrices();
 
+      const hourlySettings: HourlySetting[] = [];
+      for (const { price, startDate } of prices) {
+        const prevState = hourlySettings[hourlySettings.length - 1] ?? startTemp;
+        const setting = await HourlySetting.create(
+          startDate,
+          price,
+          elementProps,
+          prevState,
+        );
+        hourlySettings.push(setting);
+      }
+
       const settings = calculateSettings(
-        prices.reduce<HourlySetting[]>(
-          (
-            acc,
-            { price, startDate },
-          ) => [
-            ...acc,
-            new HourlySetting(
-              startDate,
-              price,
-              elementProps,
-              acc[acc.length - 1] ?? startTemp,
-            ),
-          ],
-          [],
-        ),
+        hourlySettings,
         { ...options, elementProps },
       );
       const [totalPower, totalCost] = settings.reduce(([p, c], curr) => {
