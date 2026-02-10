@@ -8,5 +8,14 @@
     "remeda": "https://esm.sh/remeda",
     "edge-runtime": "jsr:@supabase/functions-js/edge-runtime.d.ts",
     "zod": "npm:zod@3.21.4"
-  }
+  },
+  "tasks": {
+    "test": "deno test --allow-all",
+    "test:watch": "deno test --allow-all --watch",
+    "test:coverage": "deno test --allow-all --coverage=coverage",
+    "test:coverage-report": "deno coverage coverage --lcov > coverage.lcov"
+  },
+  "exclude": [
+    "coverage"
+  ]
 }
