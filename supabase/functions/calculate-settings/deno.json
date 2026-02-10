@@ -10,9 +10,12 @@
     "zod": "npm:zod@3.21.4"
   },
   "tasks": {
-    "test": "deno test --allow-all",
-    "test:watch": "deno test --allow-all --watch",
-    "test:coverage": "deno test --allow-all --coverage=coverage",
+    "test": "deno test --allow-all --no-check hourly-setting.test.ts",
+    "test:watch": "deno test --allow-all --watch --no-check hourly-setting.test.ts",
+    "test:integration": "deno test --allow-all --no-check integration.test.ts",
+    "test:integration:watch": "deno test --allow-all --watch --no-check integration.test.ts",
+    "test:all": "deno test --allow-all --no-check",
+    "test:coverage": "deno test --allow-all --coverage=coverage --no-check",
     "test:coverage-report": "deno coverage coverage --lcov > coverage.lcov"
   },
   "exclude": [

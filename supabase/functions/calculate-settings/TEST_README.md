@@ -46,11 +46,20 @@ Shared test utilities and mock data:
 ## Running Tests
 
 ```bash
-# Run all tests
+# Run unit tests only (fast, no external dependencies)
 deno task test
 
-# Run tests in watch mode (auto-rerun on changes)
+# Run unit tests in watch mode (auto-rerun on changes)
 deno task test:watch
+
+# Run integration tests (requires local Supabase)
+deno task test:integration
+
+# Run integration tests in watch mode
+deno task test:integration:watch
+
+# Run all tests (unit + integration)
+deno task test:all
 
 # Run tests with coverage
 deno task test:coverage
@@ -58,6 +67,35 @@ deno task test:coverage
 # Generate coverage report
 deno task test:coverage-report
 ```
+
+## Integration Tests
+
+Integration tests run against a local Supabase instance and test actual database operations.
+
+**Prerequisites:**
+1. Install Supabase CLI: `brew install supabase/tap/supabase`
+2. Start Supabase: `cd ../../.. && supabase start`
+3. Verify migrations are applied
+
+**Quick start:**
+```bash
+# Automated script that checks Supabase and runs tests
+./run-integration-tests.sh
+```
+
+See [INTEGRATION_TEST_README.md](./INTEGRATION_TEST_README.md) for detailed documentation.
+
+### What Integration Tests Cover
+
+- ✅ Actual database read operations (getTemperature, getDropRates, etc.)
+- ✅ Database write operations (savePlan)
+- ✅ RPC function calls
+- ✅ Data integrity and constraints
+- ✅ Lock management for heating plans
+- ✅ Upsert behavior
+- ✅ Transaction handling
+
+Integration tests complement unit tests by verifying the system works with real database operations.
 
 ## Running Individual Test Files
 
