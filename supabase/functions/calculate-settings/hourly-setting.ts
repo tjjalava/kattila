@@ -68,6 +68,8 @@ export class HourlySetting implements HourState {
     public readonly price: number,
     private readonly elementProps: ElementProps,
     public readonly prevState: HourState,
+    public readonly scheduledLimitUp?: number,
+    public readonly scheduledLimitDown?: number,
     transmissionPrice?: number,
   ) {
     this.increaseFactors = {
@@ -93,9 +95,21 @@ export class HourlySetting implements HourState {
     price: number,
     elementProps: ElementProps,
     prevState: HourState,
+    scheduledLimits: { limitup: number | null; limitdown: number | null } = {
+      limitup: null,
+      limitdown: null,
+    },
   ): Promise<HourlySetting> {
     const transmissionPrice = await getTransmissionPrice(timestamp);
-    return new HourlySetting(timestamp, price, elementProps, prevState, transmissionPrice);
+    return new HourlySetting(
+      timestamp,
+      price,
+      elementProps,
+      prevState,
+      scheduledLimits.limitup ?? undefined,
+      scheduledLimits.limitdown ?? undefined,
+      transmissionPrice,
+    );
   }
 
   private calculateUpTemp() {
@@ -283,11 +297,12 @@ export const calculateSettings = (
   { tempLimitUp, tempLimitDown, elementProps, maxPower = 12 }: CalculateOptions,
 ) => {
   for (const setting of hourlySettings) {
-    const limitUp = setting.isLowTempHour ? tempLimitUp - 5 : tempLimitUp;
+    const limitUp = setting.scheduledLimitUp ?? setting.isLowTempHour ? tempLimitUp - 5 : tempLimitUp;
+    const limitDown = setting.scheduledLimitDown ?? tempLimitDown;
 
     while (
       setting.temperatureUp < limitUp ||
-      setting.temperatureDown < tempLimitDown
+      setting.temperatureDown < limitDown
     ) {
       const cheapest = getCheapestAvailableHour(
         setting,
@@ -319,7 +334,11 @@ export const calculateSettings = (
   }
 
   for (let i = 0; i < hourlySettings.length - 1; i++) {
-    comparePowerSettings(hourlySettings[i], hourlySettings[i + 1], hourlySettings);
+    comparePowerSettings(
+      hourlySettings[i],
+      hourlySettings[i + 1],
+      hourlySettings,
+    );
   }
 
   return hourlySettings;

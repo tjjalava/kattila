@@ -11,7 +11,7 @@ import {
   HourState,
 } from "./hourly-setting.ts";
 import { client } from "supabaseClient";
-import {Json} from "../_shared/database.types.ts";
+import { Json } from "../_shared/database.types.ts";
 
 export const DOWN = "101";
 export const UP = "100";
@@ -28,6 +28,23 @@ const db = <Ret>(fn: { data: Ret; error: Error | null }) => {
     throw dbError;
   }
   return fn.data;
+};
+
+export const getTemperatureSchedule = async (
+  start: Date,
+  end: Date,
+): Promise<Record<string, { limitup: number | null; limitdown: number | null }>> => {
+  const data = db(
+    await client.rpc("get_temperature_schedule", {
+      start_time: startOfHour(start).toISOString(),
+      end_time: startOfHour(end).toISOString(),
+    }),
+  );
+
+  return R.mapToObj(
+    data ?? [],
+    ({ hour, ...limits }) => [new Date(hour).toISOString(), limits],
+  );
 };
 
 export const getHeatingPlan = async (currentHour = startOfHour(new Date())) => {
@@ -106,9 +123,11 @@ export const savePlan = async (
         options: {
           isLowTempHour: s.isLowTempHour,
           flexPriceUsed: s.flexPriceUsed,
-          tempLimitUp: s.isLowTempHour || s.flexPriceUsed ? options.tempLimitUp - 5 : options.tempLimitUp,
-          tempLimitDown: options.tempLimitDown,
-        }
+          tempLimitUp: s.scheduledLimitUp ?? (s.isLowTempHour || s.flexPriceUsed
+            ? options.tempLimitUp - 5
+            : options.tempLimitUp),
+          tempLimitDown: s.scheduledLimitDown ?? options.tempLimitDown,
+        },
       })),
     ),
   );
@@ -121,7 +140,10 @@ export const savePlan = async (
         ...options,
         isLowTempHour: currentSetting.isLowTempHour,
         flexPriceUsed: currentSetting.flexPriceUsed,
-        tempLimitUp: currentSetting.isLowTempHour || currentSetting.flexPriceUsed ? options.tempLimitUp - 5 : options.tempLimitUp,
+        tempLimitUp:
+          currentSetting.isLowTempHour || currentSetting.flexPriceUsed
+            ? options.tempLimitUp - 5
+            : options.tempLimitUp,
       } as unknown as Json,
     }).eq("timestamp", currentHour.toISOString()),
   );

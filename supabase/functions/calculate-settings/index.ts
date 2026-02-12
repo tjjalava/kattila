@@ -14,6 +14,7 @@ import {
   getDropRates,
   getHeatingPlan,
   getTemperature,
+  getTemperatureSchedule,
   savePlan,
   UP,
 } from "./db.ts";
@@ -103,7 +104,7 @@ Deno.serve(async (req) => {
           up: 3,
           down: 5.6,
         },
-      }
+      };
 
       const elementProps: ElementProps = {
         ...elementPropTemplate,
@@ -117,15 +118,21 @@ Deno.serve(async (req) => {
       };
 
       const prices = await fetchLatestPrices();
+      const limits = await getTemperatureSchedule(
+        prices.at(0)?.startDate ?? new Date(),
+        prices.at(-1)?.startDate ?? new Date(),
+      );
 
       const hourlySettings: HourlySetting[] = [];
       for (const { price, startDate } of prices) {
-        const prevState = hourlySettings[hourlySettings.length - 1] ?? startTemp;
+        const prevState = hourlySettings[hourlySettings.length - 1] ??
+          startTemp;
         const setting = await HourlySetting.create(
           startDate,
           price,
           elementProps,
           prevState,
+          limits[startDate.toISOString()]
         );
         hourlySettings.push(setting);
       }
