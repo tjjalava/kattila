@@ -123,10 +123,10 @@ export const savePlan = async (
         options: {
           isLowTempHour: s.isLowTempHour,
           flexPriceUsed: s.flexPriceUsed,
-          tempLimitUp: s.isLowTempHour || s.flexPriceUsed
+          tempLimitUp: s.scheduledLimitUp ?? (s.isLowTempHour || s.flexPriceUsed
             ? options.tempLimitUp - 5
-            : options.tempLimitUp,
-          tempLimitDown: options.tempLimitDown,
+            : options.tempLimitUp),
+          tempLimitDown: s.scheduledLimitDown ?? options.tempLimitDown,
         },
       })),
     ),

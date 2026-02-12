@@ -15,10 +15,11 @@ WITH hourly_periods AS (SELECT hour_start
                                      end_time,
                                      interval '1 hour'
                              ) AS hour_start)
-SELECT hp.hour_start,
+SELECT DISTINCT ON (hp.hour_start)
+       hp.hour_start,
        s.limitup,
        s.limitdown
 FROM hourly_periods hp
          LEFT JOIN schedule s ON s.range @> hp.hour_start
-ORDER BY hp.hour_start;
+ORDER BY hp.hour_start, lower(s.range) DESC NULLS LAST;
 $function$;

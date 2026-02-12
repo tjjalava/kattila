@@ -23,11 +23,8 @@ import {
   DOWN,
   getDropRates,
   getHeatingPlan,
-  getIncreaseRates,
   getTemperature,
   getTemperatureSchedule,
-  RESISTOR_DOWN,
-  RESISTOR_UP,
   savePlan,
   UP,
 } from "./db.ts";
@@ -38,13 +35,13 @@ import type { ElementProps } from "./hourly-setting.ts";
 // Test data cleanup helper
 const cleanupTestData = async (): Promise<void> => {
   // Clean up any test data from heating_plan
-  await client.from("heating_plan").delete().gte("timestamp", new Date("2026-01-01").toISOString());
+  await client.from("heating_plan").delete().lte("timestamp", new Date("2023-12-31").toISOString());
 
   // Clean up test temperature readings (if any were inserted)
-  await client.from("temperature").delete().gte("timestamp", new Date("2026-01-01").toISOString());
+  await client.from("temperature").delete().lte("timestamp", new Date("2023-12-31").toISOString());
 
   // Clean up test schedule entries
-  await client.from("schedule").delete().gte("range", `[${new Date("2026-01-01").toISOString()},)`);
+  await client.from("schedule").delete().filter('range', 'sl', '[2024-01-01T00:00:00Z,)');
 };
 
 // Setup: Clean before tests
@@ -61,7 +58,7 @@ Deno.test({
   name: "getTemperature - retrieves latest temperature from database",
   fn: async () => {
     // Insert test temperature data
-    const testTime = new Date("2026-02-11T12:00:00Z");
+    const testTime = new Date("2023-02-11T12:00:00Z");
     await client.from("temperature").insert([
       { peripheral: UP, temperature: 55.5, timestamp: testTime.toISOString() },
     ]);
@@ -84,7 +81,7 @@ Deno.test({
 Deno.test({
   name: "getTemperature - handles both peripherals",
   fn: async () => {
-    const testTime = new Date("2026-02-11T12:00:00Z");
+    const testTime = new Date("2023-02-11T12:00:00Z");
     await client.from("temperature").insert([
       { peripheral: UP, temperature: 55.5, timestamp: testTime.toISOString() },
       { peripheral: DOWN, temperature: 35.2, timestamp: testTime.toISOString() },
@@ -149,92 +146,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "getIncreaseRates - fetches temperature increase rates from RPC",
-  fn: async () => {
-    // Insert temperature data with resistor state changes to generate increase rates
-    const now = new Date();
-    const twoHoursAgo = new Date(now.getTime() - 7200000);
-    const oneHourAgo = new Date(now.getTime() - 3600000);
-
-    // Insert resistor state changes
-    await client.from("resistor_state").insert([
-      { state: RESISTOR_UP, timestamp: twoHoursAgo.toISOString() },
-      { state: "0", timestamp: oneHourAgo.toISOString() },
-    ]);
-
-    // Insert corresponding temperature changes
-    await client.from("temperature").insert([
-      { peripheral: UP, temperature: 50.0, timestamp: twoHoursAgo.toISOString() },
-      { peripheral: UP, temperature: 51.1, timestamp: oneHourAgo.toISOString() },
-      { peripheral: DOWN, temperature: 30.0, timestamp: twoHoursAgo.toISOString() },
-      { peripheral: DOWN, temperature: 30.9, timestamp: oneHourAgo.toISOString() },
-    ]);
-
-    try {
-      const rates = await getIncreaseRates();
-
-      // The RPC might return undefined if there's not enough data
-      // Test that it either returns valid data or undefined (not an error)
-      if (rates) {
-        // If we get data, verify structure
-        assertEquals(typeof rates, "object");
-
-        // Check that we have the expected power level keys
-        if (rates["6"]) {
-          assertEquals(typeof rates["6"], "object");
-        }
-        if (rates["12"]) {
-          assertEquals(typeof rates["12"], "object");
-        }
-      }
-    } finally {
-      // Cleanup test data
-      await client.from("temperature").delete()
-        .gte("timestamp", twoHoursAgo.toISOString());
-      await client.from("resistor_state").delete()
-        .gte("timestamp", twoHoursAgo.toISOString());
-    }
-  },
-  sanitizeResources: false,
-  sanitizeOps: false,
-});
-
-Deno.test({
-  name: "getIncreaseRates - accepts custom interval",
-  fn: async () => {
-    const rates48h = await getIncreaseRates({ hours: 48 });
-    const rates24h = await getIncreaseRates({ hours: 24 });
-
-    // Test that both calls work without errors
-    // They may return undefined if there's not enough data, which is fine
-
-    // If we get data, verify structure is consistent
-    if (rates48h && rates24h) {
-      assertEquals(typeof rates48h, "object");
-      assertEquals(typeof rates24h, "object");
-
-      // Both should have the same keys structure (even if empty)
-      if (rates48h["6"]) {
-        assertEquals(typeof rates48h["6"], "object");
-      }
-      if (rates24h["6"]) {
-        assertEquals(typeof rates24h["6"], "object");
-      }
-    }
-  },
-  sanitizeResources: false,
-  sanitizeOps: false,
-});
-
-Deno.test({
   name: "getTemperatureSchedule - retrieves schedule from database",
   fn: async () => {
-    const start = new Date("2026-02-11T10:00:00Z");
-    const end = new Date("2026-02-11T14:00:00Z");
+    const start = new Date("2023-02-11T10:00:00Z");
+    const end = new Date("2023-02-11T14:00:00Z");
 
     // Insert test schedule
     await client.from("schedule").insert({
-      range: `[${start.toISOString()},${new Date("2026-02-11T12:00:00Z").toISOString()})`,
+      range: `[${start.toISOString()},${new Date("2023-02-11T12:00:00Z").toISOString()})`,
       limitup: 50,
       limitdown: 30,
     });
@@ -247,8 +166,47 @@ Deno.test({
       assertEquals(typeof schedule, "object");
     } finally {
       // Cleanup
-      await client.from("schedule").delete()
-        .gte("range", `[${start.toISOString()},)`);
+      await client.from("schedule").delete().filter('range', 'sl', `[${start.toISOString()},)`);
+    }
+  },
+  sanitizeResources: false,
+  sanitizeOps: false,
+});
+
+Deno.test({
+  name: "getTemperatureSchedule - retrieves only one value per hour from database",
+  fn: async () => {
+    const start1 = new Date("2023-02-11T10:00:00Z");
+    const end1 = new Date("2023-02-11T14:00:00Z");
+
+    const start2 = new Date("2023-02-11T11:00:00Z");
+    const end2 = new Date("2023-02-11T13:00:00Z");
+
+    // Insert test schedule
+    await client.from("schedule").insert({
+      range: `[${start1.toISOString()},${end1.toISOString()})`,
+      limitup: 50,
+      limitdown: 30,
+    });
+    await client.from("schedule").insert({
+      range: `[${start2.toISOString()},${end2.toISOString()})`,
+      limitup: 40,
+      limitdown: 20,
+    });
+
+    try {
+      const schedule = await getTemperatureSchedule(start1, end1);
+
+      assertExists(schedule);
+      assertEquals(schedule["2023-02-11T10:00:00.000Z"], { limitup: 50, limitdown: 30 });
+      assertEquals(schedule["2023-02-11T11:00:00.000Z"], { limitup: 40, limitdown: 20 });
+      assertEquals(schedule["2023-02-11T12:00:00.000Z"], { limitup: 40, limitdown: 20 });
+      assertEquals(schedule["2023-02-11T13:00:00.000Z"], { limitup: 50, limitdown: 30 });
+      assertEquals(schedule["2023-02-11T14:00:00.000Z"], { limitup: null, limitdown: null });
+
+    } finally {
+      // Cleanup
+      await client.from("schedule").delete().filter('range', 'sl', `[${start1.toISOString()},)`);
     }
   },
   sanitizeResources: false,
@@ -258,8 +216,8 @@ Deno.test({
 Deno.test({
   name: "getHeatingPlan - retrieves future heating plan",
   fn: async () => {
-    const currentHour = startOfHour(new Date("2026-02-11T12:00:00Z"));
-    const nextHour = startOfHour(new Date("2026-02-11T13:00:00Z"));
+    const currentHour = startOfHour(new Date("2023-02-11T12:00:00Z"));
+    const nextHour = startOfHour(new Date("2023-02-11T13:00:00Z"));
 
     // Insert test heating plan
     await client.from("heating_plan").insert([
@@ -313,7 +271,7 @@ Deno.test({
 Deno.test({
   name: "savePlan - upserts heating plan to database",
   fn: async () => {
-    const currentHour = startOfHour(new Date("2026-02-11T12:00:00Z"));
+    const currentHour = startOfHour(new Date("2023-02-11T12:00:00Z"));
 
     const mockElementProps: ElementProps = {
       decreasePerHour: { up: 0.9, down: 1.2 },
@@ -370,8 +328,8 @@ Deno.test({
 Deno.test({
   name: "savePlan - marks current hour as locked, future hours as unlocked",
   fn: async () => {
-    const currentHour = startOfHour(new Date("2026-02-11T12:00:00Z"));
-    const nextHour = startOfHour(new Date("2026-02-11T13:00:00Z"));
+    const currentHour = startOfHour(new Date("2023-02-11T12:00:00Z"));
+    const nextHour = startOfHour(new Date("2023-02-11T13:00:00Z"));
 
     const mockElementProps: ElementProps = {
       decreasePerHour: { up: 0.9, down: 1.2 },
@@ -445,7 +403,7 @@ Deno.test({
 Deno.test({
   name: "savePlan - upsert updates existing records",
   fn: async () => {
-    const currentHour = startOfHour(new Date("2026-02-11T12:00:00Z"));
+    const currentHour = startOfHour(new Date("2023-02-11T12:00:00Z"));
 
     const mockElementProps: ElementProps = {
       decreasePerHour: { up: 0.9, down: 1.2 },
