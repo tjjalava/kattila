@@ -1,0 +1,12 @@
+{
+  "name": "shelly-heating-tests",
+  "version": "1.0.0",
+  "description": "Unit tests for Shelly heating control script",
+  "type": "module",
+  "scripts": {
+    "test": "node heating.test.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
+

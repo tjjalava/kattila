@@ -7,7 +7,8 @@ let RelayUp = 0;
 let RelayDown = 1;
 
 function printDebug(message) {
-  print("Heating: " + message);
+  let timestamp = new Date().toISOString();
+  print("Heating [" + timestamp + "]: " + message);
 }
 
 let reportUrl = "https://gaqwlaafsprpmoezomkj.supabase.co/functions/v1/resistor-state";
@@ -66,6 +67,8 @@ printDebug("Ohjaus käynnistyy 30 sekunnissa.");
 Timer.set(30000, true, function () {
   let currentHour = new Date().getHours();
 
+  printDebug("Timer triggered. Current hour: " + currentHour + ", Stored hour: " + hour);
+
   if (hour === currentHour) {
     printDebug("Odotetaan tunnin vaihtumista.");
     return;
@@ -91,13 +94,15 @@ Timer.set(30000, true, function () {
       let on = 0
       let error = err !== 0 || res == null || res.code !== 200;
       if (error) {
-        printDebug("Virhe HTTP-pyynnössä: " + url);
-        printDebug(res.code);
+        printDebug("Virhe HTTP-pyynnössä: " + url + " (hour: " + currentHour + ")");
+        if (res != null) {
+          printDebug(res.code);
+        }
         printDebug(err);
       }
 
       if (!error) {
-        if (res.body !== undefined) {
+        if (res != null && res.body !== undefined) {
           try {
             let body = JSON.parse(res.body);
             if (body !== null) {
@@ -139,5 +144,6 @@ Timer.set(30000, true, function () {
         Shelly.call("Switch.Set", {id: RelayUp, on: false}, null, null);
         printDebug("Kytketään alarele päälle, ylärele pois päältä.");
       }
+      printDebug("Control cycle complete. Hour set to: " + hour + ", Power: " + on + ", Error: " + error);
     });
 });
