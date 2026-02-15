@@ -123,9 +123,10 @@ export const savePlan = async (
         options: {
           isLowTempHour: s.isLowTempHour,
           flexPriceUsed: s.flexPriceUsed,
-          tempLimitUp: s.scheduledLimitUp ?? (s.isLowTempHour || s.flexPriceUsed
-            ? options.tempLimitUp - 5
-            : options.tempLimitUp),
+          scheduledLimitUp: s.scheduledLimitUp,
+          scheduledLimitDown: s.scheduledLimitDown,
+          // tempLimitUp/Down show the ACTUAL limits used in calculation
+          tempLimitUp: s.scheduledLimitUp ?? (s.isLowTempHour || s.flexPriceUsed ? options.tempLimitUp - 5 : options.tempLimitUp),
           tempLimitDown: s.scheduledLimitDown ?? options.tempLimitDown,
         },
       })),
@@ -140,10 +141,15 @@ export const savePlan = async (
         ...options,
         isLowTempHour: currentSetting.isLowTempHour,
         flexPriceUsed: currentSetting.flexPriceUsed,
-        tempLimitUp:
+        scheduledLimitUp: currentSetting.scheduledLimitUp,
+        scheduledLimitDown: currentSetting.scheduledLimitDown,
+        // tempLimitUp/Down show the ACTUAL limits used in calculation
+        tempLimitUp: currentSetting.scheduledLimitUp ?? (
           currentSetting.isLowTempHour || currentSetting.flexPriceUsed
             ? options.tempLimitUp - 5
-            : options.tempLimitUp,
+            : options.tempLimitUp
+        ),
+        tempLimitDown: currentSetting.scheduledLimitDown ?? options.tempLimitDown,
       } as unknown as Json,
     }).eq("timestamp", currentHour.toISOString()),
   );
