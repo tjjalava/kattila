@@ -417,11 +417,566 @@ Deno.test("calculateSettings - maintains temperature state chain", () => {
   }
 });
 
+Deno.test("calculateSettings - scheduled limits skip flexPrice and lowTempHour", () => {
+  // Test 1: Scheduled limit during low temp hour should NOT apply -5 adjustment
+  const lowTempHour = new Date("2026-02-10T01:00:00Z"); // 3 AM Helsinki (low temp hour)
+  const lowStartState: HourState = {
+    temperatureUp: 40,
+    temperatureDown: 30,
+  };
 
+  const settingWithSchedule = createMockSetting(
+    lowTempHour,
+    10,
+    lowStartState,
+    52, // scheduledLimitUp - should be used as-is, not reduced by 5
+    undefined,
+  );
 
+  const optionsLowTemp: CalculateOptions = {
+    tempLimitUp: 55, // Would normally be 50 during low temp hour
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
 
+  calculateSettings([settingWithSchedule], optionsLowTemp);
 
+  // Should try to reach 52, not 50 (55-5)
+  assertEquals(settingWithSchedule.isLowTempHour, true);
+  // Power should be set to heat towards 52
+  assertEquals(settingWithSchedule.power > 0, true);
 
+  // Test 2: Scheduled limit with high price should NOT stop at flexPrice
+  const highPriceHour = new Date("2026-02-10T12:00:00Z");
+  const highPrice = 30; // Above flexPriceLimit (25)
 
+  const nearTargetState: HourState = {
+    temperatureUp: 48, // Close to target but not quite there
+    temperatureDown: 35,
+  };
 
+  const settingWithHighPrice = createMockSetting(
+    highPriceHour,
+    highPrice,
+    nearTargetState,
+    52, // scheduledLimitUp
+    undefined,
+  );
 
+  const optionsHighPrice: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  calculateSettings([settingWithHighPrice], optionsHighPrice);
+
+  // Should NOT use flexPrice (flexPriceUsed should be false)
+  assertEquals(settingWithHighPrice.flexPriceUsed, false);
+  // Should continue heating despite high price
+  assertEquals(settingWithHighPrice.power > 0, true);
+
+  // Test 3: Without scheduled limit, high price during non-low-temp hour should trigger flexPrice
+  const nearTargetStateForFlex: HourState = {
+    temperatureUp: 51, // Within 5 degrees of target (55-5=50), so flexPrice can trigger
+    temperatureDown: 35,
+  };
+
+  const settingWithoutSchedule = createMockSetting(
+    highPriceHour,
+    highPrice,
+    nearTargetStateForFlex,
+    undefined, // No scheduled limit
+    undefined,
+  );
+
+  calculateSettings([settingWithoutSchedule], optionsHighPrice);
+
+  // Should use flexPrice and stop heating
+  assertEquals(settingWithoutSchedule.flexPriceUsed, true);
+});
+
+Deno.test("calculateSettings - scheduledLimitDown alone does NOT skip flexPrice", () => {
+  // When only scheduledLimitDown is set (not scheduledLimitUp), flexPrice should still apply
+  const highPriceHour = new Date("2026-02-10T12:00:00Z");
+  const highPrice = 30; // Above flexPriceLimit (25)
+
+  const nearTargetState: HourState = {
+    temperatureUp: 51, // Within 5 degrees of target (55-5=50), so flexPrice can trigger
+    temperatureDown: 30, // Below scheduled down limit
+  };
+
+  const settingWithOnlyDownSchedule = createMockSetting(
+    highPriceHour,
+    highPrice,
+    nearTargetState,
+    undefined, // No scheduledLimitUp
+    40, // scheduledLimitDown only
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  calculateSettings([settingWithOnlyDownSchedule], options);
+
+  // Should STILL use flexPrice because only scheduledLimitDown is set
+  // FlexPrice is only skipped when scheduledLimitUp is defined
+  assertEquals(settingWithOnlyDownSchedule.flexPriceUsed, true);
+});
+
+Deno.test("calculateSettings - scheduledLimitUp prevents temperature drop below limit", () => {
+  // This tests the bug: temperature should NOT drop below scheduledLimitUp
+  const startTime = new Date("2026-02-10T12:00:00Z");
+
+  // Start with temperature slightly above the scheduled limit
+  const startState: HourState = {
+    temperatureUp: 46, // Just above scheduled limit
+    temperatureDown: 40,
+  };
+
+  const setting = createMockSetting(
+    startTime,
+    15, // Moderate price
+    startState,
+    45, // scheduledLimitUp - must not drop below this
+    undefined,
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps, // decreasePerHour.up = ~6°C
+  };
+
+  calculateSettings([setting], options);
+
+  // CRITICAL: Temperature at end of hour must be >= scheduledLimitUp
+  // Without heating: 46 - 6 = 40°C (below limit!)
+  // With heating: should maintain at least 45°C
+  assertEquals(
+    setting.temperatureUp >= 45,
+    true,
+    `Temperature dropped to ${setting.temperatureUp}, below scheduled limit of 45`
+  );
+});
+
+Deno.test("calculateSettings - scheduledLimitUp during lowTempHour prevents drop", () => {
+  // During low temp hours (0-6 AM Helsinki), scheduledLimitUp should still be enforced
+  const lowTempHour = new Date("2026-02-10T01:00:00Z"); // 3 AM Helsinki
+
+  const startState: HourState = {
+    temperatureUp: 46, // Slightly above scheduled limit
+    temperatureDown: 40,
+  };
+
+  const setting = createMockSetting(
+    lowTempHour,
+    15,
+    startState,
+    45, // scheduledLimitUp
+    undefined,
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55, // Would normally be 50 during low temp hour
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  calculateSettings([setting], options);
+
+  // Must maintain scheduledLimitUp even during low temp hour
+  assertEquals(setting.isLowTempHour, true);
+  assertEquals(
+    setting.temperatureUp >= 45,
+    true,
+    `Temperature dropped to ${setting.temperatureUp} during low temp hour, below scheduled limit of 45`
+  );
+});
+
+Deno.test("calculateSettings - scheduledLimitUp with expensive price prevents drop", () => {
+  // Even with expensive electricity, scheduledLimitUp must be maintained
+  const expensiveHour = new Date("2026-02-10T18:00:00Z");
+
+  const startState: HourState = {
+    temperatureUp: 46,
+    temperatureDown: 40,
+  };
+
+  const setting = createMockSetting(
+    expensiveHour,
+    35, // Very expensive (above flexPrice limit of 25)
+    startState,
+    45, // scheduledLimitUp
+    undefined,
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  calculateSettings([setting], options);
+
+  // Must maintain scheduledLimitUp even with expensive electricity
+  assertEquals(
+    setting.temperatureUp >= 45,
+    true,
+    `Temperature dropped to ${setting.temperatureUp} with expensive price, below scheduled limit of 45`
+  );
+  // Should not use flexPrice (it's skipped when scheduledLimitUp is set)
+  assertEquals(setting.flexPriceUsed, false);
+});
+
+Deno.test("calculateSettings - multiple hours with scheduledLimitUp maintains limit", () => {
+  // Test across multiple hours to ensure temperature never drops below scheduled limit
+  const startTime = new Date("2026-02-10T12:00:00Z");
+  const prices = [20, 25, 30, 15, 10]; // Varying prices
+
+  const startState: HourState = {
+    temperatureUp: 47, // Start above limit
+    temperatureDown: 40,
+  };
+
+  const settings: HourlySetting[] = [];
+  for (let i = 0; i < prices.length; i++) {
+    const price = prices[i];
+    const timestamp = new Date(startTime.getTime() + i * 3600000);
+    const prevState: HourState = i === 0 ? startState : settings[i - 1];
+    settings.push(createMockSetting(
+      timestamp,
+      price,
+      prevState,
+      45, // scheduledLimitUp for all hours
+      undefined,
+    ));
+  }
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  const result = calculateSettings(settings, options);
+
+  // Every hour must maintain temperature >= 45
+  result.forEach((setting, index) => {
+    assertEquals(
+      setting.temperatureUp >= 45,
+      true,
+      `Hour ${index}: Temperature dropped to ${setting.temperatureUp}, below scheduled limit of 45`
+    );
+  });
+});
+
+Deno.test("calculateSettings - scheduledLimitUp starting exactly at limit", () => {
+  // Edge case: starting temperature equals the scheduled limit
+  const startTime = new Date("2026-02-10T12:00:00Z");
+
+  const startState: HourState = {
+    temperatureUp: 45, // Exactly at scheduled limit
+    temperatureDown: 40,
+  };
+
+  const setting = createMockSetting(
+    startTime,
+    15,
+    startState,
+    45, // scheduledLimitUp
+    undefined,
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: mockElementProps,
+  };
+
+  calculateSettings([setting], options);
+
+  // Must not drop below limit
+  assertEquals(
+    setting.temperatureUp >= 45,
+    true,
+    `Temperature dropped to ${setting.temperatureUp}, below scheduled limit of 45`
+  );
+  // Should have power > 0 to prevent drop
+  assertEquals(
+    setting.power > 0,
+    true,
+    `No heating applied, temperature will drop below limit`
+  );
+});
+
+Deno.test("calculateSettings - high decrease rate with scheduledLimitUp", () => {
+  // Test with higher decrease rate to match production scenario
+  const highDecreaseProps: ElementProps = {
+    decreasePerHour: {
+      up: 6.0, // Realistic high decrease rate
+      down: 7.0,
+    },
+    increasePerHour: {
+      6: {
+        up: 1.1,
+        down: 0.9,
+      },
+      12: {
+        up: 3.4,
+        down: 5.5,
+      },
+    },
+    maxTemp: 70,
+  };
+
+  const startTime = new Date("2026-02-10T12:00:00Z");
+
+  const startState: HourState = {
+    temperatureUp: 46, // Just above scheduled limit
+    temperatureDown: 40,
+  };
+
+  const setting = createMockSetting(
+    startTime,
+    15,
+    startState,
+    45, // scheduledLimitUp
+    undefined,
+  );
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: highDecreaseProps,
+  };
+
+  calculateSettings([setting], options);
+
+  // With 6°C/hour decrease: 46 - 6 = 40°C (below limit!)
+  // Must apply enough heating to maintain >= 45°C
+  assertEquals(
+    setting.temperatureUp >= 45,
+    true,
+    `Temperature dropped to ${setting.temperatureUp}, below scheduled limit of 45 (high decrease rate)`
+  );
+});
+
+Deno.test("calculateSettings - real-world scenario: temperature chain with varying prices", () => {
+  // Simulate a real production scenario
+  const highDecreaseProps: ElementProps = {
+    decreasePerHour: {
+      up: 6.0,
+      down: 7.0,
+    },
+    increasePerHour: {
+      6: {
+        up: 1.1,
+        down: 0.9,
+      },
+      12: {
+        up: 3.4,
+        down: 5.5,
+      },
+    },
+    maxTemp: 70,
+  };
+
+  // Start at 10 AM, simulate through afternoon
+  const startTime = new Date("2026-02-10T08:00:00Z"); // 10 AM Helsinki
+
+  // Prices: expensive peak hours, then cheaper evening
+  const prices = [25, 30, 35, 40, 30, 25, 20, 15, 10, 8]; // 10 hours
+
+  const startState: HourState = {
+    temperatureUp: 50, // Start at 50°C
+    temperatureDown: 45,
+  };
+
+  const settings: HourlySetting[] = [];
+  for (let i = 0; i < prices.length; i++) {
+    const price = prices[i];
+    const timestamp = new Date(startTime.getTime() + i * 3600000);
+    const prevState: HourState = i === 0 ? startState : settings[i - 1];
+
+    // Set scheduledLimitUp=45 for hours 5-9 (15:00-19:00 Helsinki)
+    const scheduledLimit = (i >= 5 && i <= 9) ? 45 : undefined;
+
+    settings.push(createMockSetting(
+      timestamp,
+      price,
+      prevState,
+      scheduledLimit,
+      undefined,
+    ));
+  }
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: highDecreaseProps,
+    maxPower: 12,
+  };
+
+  const result = calculateSettings(settings, options);
+
+  // Verify scheduled hours maintain >= 45°C
+  for (let i = 5; i <= 9; i++) {
+    assertEquals(
+      result[i].temperatureUp >= 45,
+      true,
+      `Hour ${i}: Temperature dropped to ${result[i].temperatureUp}, below scheduled limit of 45. Power: ${result[i].power}`
+    );
+  }
+
+  // Log the temperature progression for debugging
+  console.log("Temperature progression:");
+  result.forEach((s, i) => {
+    console.log(
+      `Hour ${i}: Temp=${s.temperatureUp.toFixed(1)}°C, Power=${s.power}kW, Price=${prices[i]}c/kWh, Scheduled=${settings[i].scheduledLimitUp || 'none'}`
+    );
+  });
+});
+
+Deno.test("calculateSettings - BUG: scheduledLimitUp with enough hours to drop below limit", () => {
+  // This test should FAIL and expose the bug!
+  const highDecreaseProps: ElementProps = {
+    decreasePerHour: {
+      up: 6.0,
+      down: 7.0,
+    },
+    increasePerHour: {
+      6: {
+        up: 1.1,
+        down: 0.9,
+      },
+      12: {
+        up: 3.4,
+        down: 5.5,
+      },
+    },
+    maxTemp: 70,
+  };
+
+  const startTime = new Date("2026-02-10T08:00:00Z");
+
+  const startState: HourState = {
+    temperatureUp: 46, // Start at 46°C, very close to limit
+    temperatureDown: 45,
+  };
+
+  const settings: HourlySetting[] = [];
+  // Create 10 hours with scheduledLimitUp=45, all with cheap prices
+  // With 6°C/hour decrease, this will eventually drop below 45°C
+  for (let i = 0; i < 10; i++) {
+    const timestamp = new Date(startTime.getTime() + i * 3600000);
+    const prevState: HourState = i === 0 ? startState : settings[i - 1];
+    settings.push(createMockSetting(
+      timestamp,
+      5, // Very cheap electricity
+      prevState,
+      45, // scheduledLimitUp for all hours
+      undefined,
+    ));
+  }
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: highDecreaseProps,
+    maxPower: 12,
+  };
+
+  const result = calculateSettings(settings, options);
+
+  console.log("BUG TEST - Temperature with scheduledLimitUp=45:");
+  result.forEach((s, i) => {
+    console.log(
+      `Hour ${i}: Start=${i === 0 ? 50 : result[i - 1].temperatureUp.toFixed(1)}°C -> End=${s.temperatureUp.toFixed(1)}°C, Power=${s.power}kW, Scheduled=45°C`
+    );
+  });
+
+  // ALL hours should maintain temperature >= 45°C
+  result.forEach((s, i) => {
+    assertEquals(
+      s.temperatureUp >= 45,
+      true,
+      `BUG EXPOSED! Hour ${i}: Temperature dropped to ${s.temperatureUp.toFixed(1)}°C, below scheduled limit of 45°C. Power was: ${s.power}kW`
+    );
+  });
+});
+
+Deno.test("calculateSettings - scheduledLimitUp only on some hours (production scenario)", () => {
+  // This mimics a realistic scenario where scheduledLimitUp is set for specific hours only
+  const highDecreaseProps: ElementProps = {
+    decreasePerHour: {
+      up: 6.0,
+      down: 7.0,
+    },
+    increasePerHour: {
+      6: {
+        up: 1.1,
+        down: 0.9,
+      },
+      12: {
+        up: 3.4,
+        down: 5.5,
+      },
+    },
+    maxTemp: 70,
+  };
+
+  const startTime = new Date("2026-02-10T08:00:00Z");
+
+  const startState: HourState = {
+    temperatureUp: 52, // Start higher
+    temperatureDown: 45,
+  };
+
+  const settings: HourlySetting[] = [];
+  const prices = [25, 30, 35, 40, 30, 25, 20, 15, 10, 8];
+
+  for (let i = 0; i < 10; i++) {
+    const timestamp = new Date(startTime.getTime() + i * 3600000);
+    const prevState: HourState = i === 0 ? startState : settings[i - 1];
+
+    // scheduledLimitUp=45 only for hours 3-7
+    const scheduledLimit = (i >= 3 && i <= 7) ? 45 : undefined;
+
+    settings.push(createMockSetting(
+      timestamp,
+      prices[i],
+      prevState,
+      scheduledLimit,
+      undefined,
+    ));
+  }
+
+  const options: CalculateOptions = {
+    tempLimitUp: 55,
+    tempLimitDown: 35,
+    elementProps: highDecreaseProps,
+    maxPower: 12,
+  };
+
+  const result = calculateSettings(settings, options);
+
+  console.log("\nProduction scenario - Mixed scheduled hours:");
+  result.forEach((s, i) => {
+    console.log(
+      `Hour ${i}: Temp=${s.temperatureUp.toFixed(1)}°C, Power=${s.power}kW, Price=${prices[i]}c/kWh, Scheduled=${settings[i].scheduledLimitUp || 'none'}`
+    );
+  });
+
+  // Hours 3-7 must maintain >= 45°C
+  for (let i = 3; i <= 7; i++) {
+    assertEquals(
+      result[i].temperatureUp >= 45,
+      true,
+      `Hour ${i}: Temperature ${result[i].temperatureUp.toFixed(1)}°C dropped below scheduled limit of 45°C`
+    );
+  }
+});

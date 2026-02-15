@@ -297,8 +297,9 @@ export const calculateSettings = (
   { tempLimitUp, tempLimitDown, elementProps, maxPower = 12 }: CalculateOptions,
 ) => {
   for (const setting of hourlySettings) {
-    const limitUp = setting.scheduledLimitUp ?? setting.isLowTempHour ? tempLimitUp - 5 : tempLimitUp;
+    const limitUp = setting.scheduledLimitUp ?? (setting.isLowTempHour ? tempLimitUp - 5 : tempLimitUp);
     const limitDown = setting.scheduledLimitDown ?? tempLimitDown;
+    const hasScheduledLimitUp = setting.scheduledLimitUp !== undefined;
 
     while (
       setting.temperatureUp < limitUp ||
@@ -311,6 +312,7 @@ export const calculateSettings = (
       );
 
       if (
+        !hasScheduledLimitUp &&
         cheapest.totalPrice > flexPriceLimit && !setting.isLowTempHour &&
         setting.temperatureUp >= (limitUp - 5)
       ) {
